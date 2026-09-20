@@ -37,8 +37,4 @@ def direction_cosines_visualizer(dim: int = 2, height: int | None = None) -> Non
     """Cosenos directores de un vector v en R2 (α, β) o en R3 (α, β, γ)."""
     if dim not in (2, 3):
         raise ValueError("dim debe ser 2 o 3")
-    components.html(
-        _load(f"cosines_{dim}d.html"),
-        height=height or (660 if dim == 2 else 700),
-        scrolling=True,
-    )
+    components.html(_load(f"cosines_{dim}d.html"), height=height or (660 if dim == 2 else 700), scrolling=True)
