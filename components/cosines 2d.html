@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400;1,6..72,500&display=swap" rel="stylesheet">
+<style>/*__BASE_CSS__*/</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="stage">
+    <canvas id="cv" aria-label="Plano con el vector v y los ángulos α y β que forma con los ejes x e y"></canvas>
+    <div class="chips">
+      <button class="chip" id="pReset">Reiniciar</button>
+      <button class="chip" id="pUnit">Longitud 1</button>
+      <button class="chip" id="pSnap" aria-pressed="false">Rejilla</button>
+    </div>
+    <div class="hint">Arrastra la punta de v.</div>
+  </div>
+
+  <aside class="panel">
+    <div class="vec">
+      <i class="dot" style="background:var(--text)"></i>
+      <div class="vmain"><span class="vn">v</span><span class="vm">|v| = <b id="vMag"></b></span></div>
+      <div class="vc" id="vXY"></div>
+      <div class="vc" id="vHat"></div>
+    </div>
+
+    <div class="cosrows" id="rows"></div>
+
+    <div class="eq">
+      <div class="l1">cos²<span class="a">α</span> + cos²<span class="b">β</span> = 1</div>
+      <div class="l2" id="idNum"></div>
+      <div class="chk">Es el teorema de Pitágoras: vₓ² + vᵧ² = |v|², dividido entre |v|².</div>
+    </div>
+
+    <p class="note">cos α es qué fracción de |v| cae a lo largo del eje x: cateto adyacente sobre hipotenusa. Con |v| = 1, los cosenos son las coordenadas de v.</p>
+  </aside>
+
+</div>
+
+<script>/*__COMMON_JS__*/</script>
+<script>
+(() => {
+'use strict';
+const {C, FONT, $, reduce, clamp, fmt, arrow2, ring2, arc2, text, fit} = VZ;
+const cv = $('cv'), ctx = cv.getContext('2d');
+
+const HALF = 5.2, LMAX = 4.7, LMIN = 0.4;
+const V0 = () => ({x: 3.0, y: 2.2});
+const AX = [
+  {id: 'a', g: 'α', hat: 'î', col: C.a, cls: 'a', css: 'var(--p1)'},
+  {id: 'b', g: 'β', hat: 'ĵ', col: C.b, cls: 'b', css: 'var(--p2)'},
+];
+
+let v = V0(), snap = false, drag = null, hover = false, anim = 0;
+let W = 0, H = 0, S = 1, cx = 0, cy = 0, dpr = 1;
+const X = x => cx + x * S, Y = y => cy - y * S;
+const deg = r => r * 180 / Math.PI;
+
+function metrics() {
+  const L = Math.hypot(v.x, v.y), c = [v.x / L, v.y / L];
+  return {L, c, ang: c.map(Math.acos), phi: Math.atan2(v.y, v.x)};
+}
+
+/* ---------- dibujo ---------- */
+function resize() {
+  const r = cv.getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1; W = r.width; H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  S = Math.max(1, Math.min(W, H) / (2 * HALF)); cx = W / 2; cy = H / 2;
+  draw();
+}
+
+function line(x0, y0, x1, y1) { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); }
+
+function drawGrid() {
+  const nx = Math.ceil(cx / S), ny = Math.ceil(cy / S);
+  ctx.lineWidth = 1; ctx.setLineDash([]);
+  for (let i = -nx; i <= nx; i++) { ctx.strokeStyle = i ? 'rgba(238,234,226,.05)' : 'rgba(238,234,226,.28)'; const x = Math.round(cx + i * S) + .5; line(x, 0, x, H); }
+  for (let j = -ny; j <= ny; j++) { ctx.strokeStyle = j ? 'rgba(238,234,226,.05)' : 'rgba(238,234,226,.28)'; const y = Math.round(cy + j * S) + .5; line(0, y, W, y); }
+  ctx.save(); ctx.lineWidth = 1.8; ctx.globalAlpha = .65;                     // semiejes positivos con el color de su ángulo
+  ctx.strokeStyle = C.a; line(cx, cy, W, cy);
+  ctx.strokeStyle = C.b; line(cx, cy, cx, 0);
+  ctx.restore();
+  text(ctx, 'x', W - 16, cy - 13, FONT.serifS, C.a);
+  text(ctx, 'y', cx + 14, 16, FONT.serifS, C.b);
+}
+
+function drawCircles(m) {
+  ctx.save(); ctx.setLineDash([3, 6]); ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(238,234,226,.10)'; ctx.beginPath(); ctx.arc(cx, cy, S, 0, 2 * Math.PI); ctx.stroke();
+  ctx.strokeStyle = 'rgba(238,234,226,.24)'; ctx.beginPath(); ctx.arc(cx, cy, m.L * S, 0, 2 * Math.PI); ctx.stroke();
+  ctx.restore();
+}
+
+function drawProjections() {
+  const tx = X(v.x), ty = Y(v.y), k = 10, sx = Math.sign(v.x) || 1, sy = Math.sign(v.y) || 1;
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.globalAlpha = .55; ctx.lineWidth = 9;                                    // proyecciones sobre los ejes
+  ctx.strokeStyle = C.a; line(cx, cy, tx, cy);
+  ctx.strokeStyle = C.b; line(cx, cy, cx, ty);
+  ctx.globalAlpha = .95; ctx.lineWidth = 1.6; ctx.setLineDash([5, 5]);         // perpendiculares desde la punta
+  ctx.strokeStyle = C.a; line(tx, ty, tx, cy);
+  ctx.strokeStyle = C.b; line(tx, ty, cx, ty);
+  ctx.setLineDash([]);
+  if (Math.abs(v.x) * S > 18 && Math.abs(v.y) * S > 18) {                      // ángulos rectos
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = C.a; ctx.beginPath(); ctx.moveTo(tx - sx * k, cy); ctx.lineTo(tx - sx * k, cy - sy * k); ctx.lineTo(tx, cy - sy * k); ctx.stroke();
+    ctx.strokeStyle = C.b; ctx.beginPath(); ctx.moveTo(cx, ty + sy * k); ctx.lineTo(cx + sx * k, ty + sy * k); ctx.lineTo(cx + sx * k, ty); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = C.a; ctx.beginPath(); ctx.arc(tx, cy, 3.6, 0, 2 * Math.PI); ctx.fill();
+  ctx.fillStyle = C.b; ctx.beginPath(); ctx.arc(cx, ty, 3.6, 0, 2 * Math.PI); ctx.fill();
+  ctx.restore();
+  if (Math.abs(v.x) * S > 54) text(ctx, '|v| cos α', (cx + tx) / 2, cy + (v.y >= 0 ? 24 : -24), FONT.sans, C.a);
+  if (Math.abs(v.y) * S > 54) { const left = v.x >= 0; text(ctx, '|v| cos β', cx + (left ? -14 : 14), (cy + ty) / 2, FONT.sans, C.b, left ? 'right' : 'left'); }
+}
+
+function drawAngles(m) {
+  const rA = clamp(.5 * m.L * S, 26, 46), rB = rA + 20;
+  const a = arc2(ctx, cx, cy, 0, m.phi, rA, {fill: 'rgba(224,103,79,.20)', stroke: C.a, right: true});
+  const b = arc2(ctx, cx, cy, Math.PI / 2, m.phi, rB, {fill: 'rgba(63,167,150,.18)', stroke: C.b, right: true});
+  const lab = (arc, r, str, col) => {                      // alineada hacia fuera para que α y β no se pisen
+    const ux = Math.cos(arc.mid), al = ux > .15 ? 'left' : ux < -.15 ? 'right' : 'center';
+    text(ctx, str, cx + ux * (r + 30) + (al === 'left' ? 4 : al === 'right' ? -4 : 0), cy - Math.sin(arc.mid) * (r + 30), FONT.serifS, col, al);
+  };
+  if (Math.abs(a.d) > 1e-3) lab(a, rA, `α = ${fmt(deg(m.ang[0]), 1)}°`, C.a);
+  if (Math.abs(b.d) > 1e-3) lab(b, rB, `β = ${fmt(deg(m.ang[1]), 1)}°`, C.b);
+}
+
+function drawVector() {
+  const tx = X(v.x), ty = Y(v.y), L = Math.hypot(tx - cx, ty - cy);
+  arrow2(ctx, cx, cy, tx, ty, C.text, 4.2, 18);
+  ring2(ctx, tx, ty, C.text, hover || !!drag, 14);
+  ctx.fillStyle = C.text; ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, 2 * Math.PI); ctx.fill();
+  if (L > 1) text(ctx, 'v', tx + (tx - cx) / L * 30, ty + (ty - cy) / L * 30, FONT.serif, C.text);
+}
+
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const m = metrics();
+  drawGrid(); drawCircles(m); drawProjections(); drawAngles(m); drawVector();
+  updatePanel(m);
+}
+
+/* ---------- panel ---------- */
+$('rows').innerHTML = AX.map(ax => `
+  <div class="cosrow">
+    <div class="def"><span class="${ax.cls}">cos ${ax.g}</span> = (v · ${ax.hat}) / (|v| |${ax.hat}|)</div>
+    <div class="val ${ax.cls}" id="val_${ax.id}"></div>
+    <div class="num" id="num_${ax.id}"></div>
+    <div class="ang" id="ang_${ax.id}"></div>
+    <div class="meter"><div class="fill" id="fill_${ax.id}" style="background:${ax.css}"></div><div class="zero"></div><div class="mark" id="mark_${ax.id}"></div></div>
+  </div>`).join('');
+
+function updatePanel(m) {
+  const comp = [v.x, v.y];
+  $('vMag').textContent = fmt(m.L);
+  $('vXY').textContent = `v = (${fmt(v.x)}, ${fmt(v.y)})`;
+  $('vHat').textContent = `v̂ = v/|v| = (${fmt(m.c[0], 3)}, ${fmt(m.c[1], 3)})`;
+  AX.forEach((ax, i) => {
+    $('val_' + ax.id).textContent = fmt(m.c[i], 3);
+    $('num_' + ax.id).textContent = `= ${fmt(comp[i])} / (${fmt(m.L)} · 1)`;
+    $('ang_' + ax.id).textContent = `${ax.g} = ${fmt(deg(m.ang[i]), 1)}°`;
+    const pos = (m.c[i] + 1) / 2 * 100, f = $('fill_' + ax.id);
+    f.style.left = Math.min(50, pos) + '%'; f.style.width = Math.abs(pos - 50) + '%';
+    $('mark_' + ax.id).style.left = pos + '%';
+  });
+  const q = m.c.map(x => x * x);
+  $('idNum').innerHTML = `= <span class="a">${fmt(q[0], 3)}</span> + <span class="b">${fmt(q[1], 3)}</span> = ${fmt(q[0] + q[1], 3)}`;
+  fit();
+}
+
+/* ---------- interacción ---------- */
+const pos = e => { const r = cv.getBoundingClientRect(); return {px: e.clientX - r.left, py: e.clientY - r.top}; };
+const hitTip = (px, py, touch) => Math.hypot(px - X(v.x), py - Y(v.y)) <= (touch ? 36 : 24);
+
+function setVec(p) {
+  let L = Math.hypot(p.x, p.y);
+  if (L < 1e-6) p = {x: v.x, y: v.y}, L = Math.hypot(p.x, p.y);
+  const s = L > LMAX ? LMAX / L : (L < LMIN ? LMIN / L : 1);
+  v = {x: p.x * s, y: p.y * s};
+}
+
+cv.addEventListener('pointerdown', e => {
+  const {px, py} = pos(e);
+  if (!hitTip(px, py, e.pointerType === 'touch')) return;
+  cancelAnimationFrame(anim);
+  drag = {ox: px - X(v.x), oy: py - Y(v.y)};
+  cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; draw();
+});
+cv.addEventListener('pointermove', e => {
+  const {px, py} = pos(e);
+  if (drag) {
+    const p = {x: (px - drag.ox - cx) / S, y: (cy - (py - drag.oy)) / S};
+    if (e.shiftKey || snap) { p.x = Math.round(p.x * 2) / 2; p.y = Math.round(p.y * 2) / 2; }
+    setVec(p); draw(); return;
+  }
+  if (e.pointerType === 'touch') return;
+  const h = hitTip(px, py, false);
+  if (h !== hover) { hover = h; cv.style.cursor = h ? 'grab' : 'default'; draw(); }
+});
+const endDrag = () => { drag = null; cv.style.cursor = hover ? 'grab' : 'default'; draw(); };
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', () => { if (!drag && hover) { hover = false; draw(); } });
+
+/* ---------- animación y atajos ---------- */
+function animateTo(target) {
+  cancelAnimationFrame(anim);
+  if (reduce) { v = target; draw(); return; }
+  const from = {r: Math.hypot(v.x, v.y), a: Math.atan2(v.y, v.x)}, to = {r: Math.hypot(target.x, target.y), a: Math.atan2(target.y, target.x)};
+  let da = to.a - from.a;
+  while (da > Math.PI) da -= 2 * Math.PI;
+  while (da < -Math.PI) da += 2 * Math.PI;
+  const t0 = performance.now(), D = 420;
+  const step = now => {
+    const t = Math.min(1, (now - t0) / D), e = 1 - Math.pow(1 - t, 3), r = from.r + (to.r - from.r) * e, a = from.a + da * e;
+    v = {x: r * Math.cos(a), y: r * Math.sin(a)}; draw();
+    if (t < 1) anim = requestAnimationFrame(step);
+  };
+  anim = requestAnimationFrame(step);
+}
+$('pReset').onclick = () => animateTo(V0());
+$('pUnit').onclick = () => { const L = Math.hypot(v.x, v.y); animateTo({x: v.x / L, y: v.y / L}); };
+$('pSnap').onclick = () => { snap = !snap; $('pSnap').setAttribute('aria-pressed', String(snap)); };
+
+new ResizeObserver(resize).observe(cv);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+resize();
+})();
+</script>
+</body>
+</html>
