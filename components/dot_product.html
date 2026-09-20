@@ -18,8 +18,9 @@
       <button class="chip" id="pPerp">Perpendiculares</button>
       <button class="chip" id="pPar">Paralelos</button>
       <button class="chip" id="pOpp">Opuestos</button>
+      <button class="chip" id="pSnap" aria-pressed="false">Rejilla</button>
     </div>
-    <div class="hint">Arrastra la punta de A o de B. Con Shift se ajusta a la rejilla.</div>
+    <div class="hint">Arrastra la punta de A o de B.</div>
   </div>
 
   <aside class="panel">
@@ -61,6 +62,7 @@
 
 </div>
 
+<script>/*__COMMON_JS__*/</script>
 <script>
 (() => {
 'use strict';
@@ -82,7 +84,7 @@ const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let {A, B} = INIT();
 let onto = 'A';                       // 'A' → se proyecta B sobre A
 let W = 0, H = 0, S = 1, cx = 0, cy = 0, dpr = 1;
-let drag = null, hover = null, anim = 0;
+let drag = null, hover = null, anim = 0, snap = false;
 
 /* ---------- utilidades ---------- */
 const X = p => cx + p.x * S;
@@ -281,15 +283,16 @@ function updatePanel(m) {
   $('pProdL').textContent = `|${to}| × componente`;
   $('pProd').textContent = `${fmt(bl)} × ${par(c)} = ${fmt(bl * c)}`;
   $('note').textContent = noteFor(m);
+  VZ.fit();
 }
 
 /* ---------- interacción ---------- */
 const pos = e => { const r = cv.getBoundingClientRect(); return {px: e.clientX - r.left, py: e.clientY - r.top}; };
 const toMath = (px, py) => ({x: (px - cx) / S, y: (cy - py) / S});
 
-function hit(px, py) {
-  const dA = Math.hypot(px - X(A), py - Y(A)), dB = Math.hypot(px - X(B), py - Y(B));
-  if (dA > 24 && dB > 24) return null;
+function hit(px, py, touch) {
+  const dA = Math.hypot(px - X(A), py - Y(A)), dB = Math.hypot(px - X(B), py - Y(B)), R = touch ? 36 : 24;
+  if (dA > R && dB > R) return null;
   return dA <= dB ? 'A' : 'B';
 }
 
@@ -303,7 +306,7 @@ function setVec(k, p) {
 }
 
 cv.addEventListener('pointerdown', e => {
-  const {px, py} = pos(e), k = hit(px, py);
+  const {px, py} = pos(e), k = hit(px, py, e.pointerType === 'touch');
   if (!k) return;
   cancelAnimationFrame(anim);
   const v = k === 'A' ? A : B;
@@ -315,10 +318,11 @@ cv.addEventListener('pointermove', e => {
   const {px, py} = pos(e);
   if (drag) {
     const p = toMath(px - drag.ox, py - drag.oy);
-    if (e.shiftKey) { p.x = Math.round(p.x * 2) / 2; p.y = Math.round(p.y * 2) / 2; }
+    if (e.shiftKey || snap) { p.x = Math.round(p.x * 2) / 2; p.y = Math.round(p.y * 2) / 2; }
     setVec(drag.k, p); draw(); return;
   }
-  const k = hit(px, py);
+  if (e.pointerType === 'touch') return;
+  const k = hit(px, py, false);
   if (k !== hover) { hover = k; cv.style.cursor = k ? 'grab' : 'default'; draw(); }
 });
 
@@ -363,6 +367,7 @@ function setOnto(k) {
   $('ontoB').setAttribute('aria-pressed', String(k === 'B'));
   draw();
 }
+$('pSnap').onclick = () => { snap = !snap; $('pSnap').setAttribute('aria-pressed', String(snap)); };
 $('ontoA').onclick = () => setOnto('A');
 $('ontoB').onclick = () => setOnto('B');
 
