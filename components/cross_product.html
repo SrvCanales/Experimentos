@@ -17,443 +17,389 @@
       <button class="chip" id="pReset">Reiniciar</button>
       <button class="chip" id="pPerp">Perpendiculares</button>
       <button class="chip" id="pPar">Paralelos</button>
+      <button class="chip" id="pOpp">Opuestos</button>
+      <button class="chip" id="zMode" aria-pressed="false">Mover en z</button>
     </div>
-    <div class="hint">Arrastra las puntas de A y B. Arrastra el fondo para girar la vista. Con Shift, la punta sube o baja.</div>
+    <div class="hint">Arrastra las puntas de A y B. Arrastra el fondo para girar la vista.</div>
   </div>
 
-  <aside class="panel">
-    <div class="vec">
-      <i class="dot" style="background:var(--p1)"></i>
-      <div class="vmain"><span class="vn a">A</span><span class="vm">|A| = <b id="aMag"></b></span></div>
-      <div class="vc" id="aXYZ"></div>
-    </div>
-    <div class="vec">
-      <i class="dot" style="background:var(--p2)"></i>
-      <div class="vmain"><span class="vn b">B</span><span class="vm">|B| = <b id="bMag"></b></span></div>
-      <div class="vc" id="bXYZ"></div>
+  <div class="side">
+    <div class="stage plane">
+      <canvas id="cv2" aria-label="Plano que contiene a A y B, con el ángulo entre ellos"></canvas>
+      <div class="hint">Aquí solo cambia el giro dentro del plano. Para inclinarlo, usa la vista 3D.</div>
     </div>
 
-    <div class="eq">
-      <div class="l1">|<span class="a">A</span> × <span class="b">B</span>| = |<span class="a">A</span>||<span class="b">B</span>| sin <span class="t">θ</span></div>
-      <div class="l2" id="l2"></div>
-      <div class="l3" id="l3"></div>
-      <div class="chk" id="chk"></div>
-    </div>
-
-    <div>
-      <div class="mrow"><span>sin <span class="t">θ</span></span><b id="sinVal"></b></div>
-      <div class="meter"><div class="fill" id="sinFill" style="left:0"></div><div class="mark" id="sinMark"></div></div>
-      <div class="mscale"><span>0</span><span>0.5</span><span>1</span></div>
-    </div>
-
-    <div>
-      <div class="vec">
-        <i class="dot" style="background:var(--p3)"></i>
-        <div class="vmain"><span class="vn n">A × B</span></div>
-        <div class="vc" id="cXYZ"></div>
+    <aside class="panel">
+      <div class="vecs">
+        <div class="vec">
+          <i class="dot" style="background:var(--p1)"></i>
+          <div class="vmain"><span class="vn a">A</span><span class="vm">|A| = <b id="aMag"></b></span></div>
+          <div class="vc" id="aXYZ"></div>
+        </div>
+        <div class="vec">
+          <i class="dot" style="background:var(--p2)"></i>
+          <div class="vmain"><span class="vn b">B</span><span class="vm">|B| = <b id="bMag"></b></span></div>
+          <div class="vc" id="bXYZ"></div>
+        </div>
       </div>
-      <div class="seg" style="margin-top:12px" role="group" aria-label="Longitud del vector A × B">
-        <button id="mUnit" aria-pressed="true">Dirección</button>
-        <button id="mScale" aria-pressed="false">A × B a escala</button>
-      </div>
-    </div>
 
-    <p class="note" id="note"></p>
-  </aside>
+      <div class="eq">
+        <div class="l1">|<span class="a">A</span> × <span class="b">B</span>| = |<span class="a">A</span>||<span class="b">B</span>| sin <span class="t">θ</span></div>
+        <div class="l2" id="l2"></div>
+        <div class="l3" id="l3"></div>
+      </div>
+
+      <div>
+        <div class="mrow"><span>sin <span class="t">θ</span></span><b id="sinVal"></b></div>
+        <div class="meter"><div class="fill" id="sinFill" style="left:0"></div><div class="mark" id="sinMark"></div></div>
+        </div>
+
+      <div>
+        <div class="vec">
+          <i class="dot" style="background:var(--p3)"></i>
+          <div class="vmain"><span class="vn n">A × B</span></div>
+          <div class="vc" id="cXYZ"></div>
+        </div>
+        <div class="seg" style="margin-top:12px" role="group" aria-label="Longitud del vector A × B">
+          <button id="mUnit" aria-pressed="true">Dirección</button>
+          <button id="mScale" aria-pressed="false">A × B a escala</button>
+        </div>
+      </div>
+
+      <p class="note" id="note"></p>
+    </aside>
+  </div>
 
 </div>
 
+<script>/*__COMMON_JS__*/</script>
 <script>
 (() => {
 'use strict';
+const {C, FONT, $, reduce, clamp, fmt, tup, add, sub, mul, dot, cross, len, norm, slerp, rotAbout,
+       text, arrow2, ring2, arc2, View3D, bind3D, fit} = VZ;
 
-/* ---------- constantes ---------- */
-const C = {bg:'#0d0f16', text:'#eeeae2', muted:'#8c92a4', sol:'#e8b94e', a:'#e0674f', b:'#3fa796', n:'#8b7fd6'};
-const SERIF   = "italic 500 22px Newsreader, 'Iowan Old Style', Georgia, serif";
-const SERIF_S = "italic 500 19px Newsreader, 'Iowan Old Style', Georgia, serif";
-const SANS_M  = "500 13.5px Figtree, ui-sans-serif, system-ui, sans-serif";
-const EXT = 4;                       // semilongitud de los ejes
-const LMAX = 3.6, LMIN = 0.35;       // longitudes permitidas para A y B
-const NUNIT = 2.6;                   // longitud de dibujo del vector unitario A × B
+/* ---------- constantes y estado ---------- */
+const LMAX = 3.6, LMIN = 0.35, NUNIT = 2.6, Z = [0, 0, 1];
 const V0 = () => ({A: [2.7, 0.4, 0.3], B: [-0.3, 2.7, 0.15]});
-const VIEW0 = {yaw: Math.PI + 0.62, pitch: 0.58};
-
-const $ = id => document.getElementById(id);
-const cv = $('cv'), ctx = cv.getContext('2d');
-const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const view = new View3D($('cv'), {ext: 4, yaw: Math.PI + .62, pitch: .58});
+const VIEW0 = {yaw: view.yaw0, pitch: view.pitch0};
+const pcv = $('cv2'), pctx = pcv.getContext('2d');
 
 let {A, B} = V0();
-let yaw = VIEW0.yaw, pitch = VIEW0.pitch;
-let mode = 'unit';                   // 'unit' | 'scale'
-let W = 0, H = 0, S = 1, S0 = 1, cx = 0, cy = 0, dpr = 1;
-let drag = null, orbit = null, hover = null, anim = 0;
-let RX = [1, 0, 0], RU = [0, 0, 1], RD = [0, 1, 0];   // base de la cámara (derecha, arriba, profundidad)
+let mode = 'unit', zLock = false, anim = 0;
+let fu = [1, 0, 0], fn = [0, 0, 1];                      // marco del plano de A y B: u (eje horizontal) y n (normal)
+let W2 = 0, H2 = 0, S2 = 1, dpr2 = 1;
+const pst = {hover: null, drag: null};                   // estado de interacción del plano
 
-/* ---------- álgebra ---------- */
-const add = (u, v) => [u[0] + v[0], u[1] + v[1], u[2] + v[2]];
-const sub = (u, v) => [u[0] - v[0], u[1] - v[1], u[2] - v[2]];
-const mul = (u, k) => [u[0] * k, u[1] * k, u[2] * k];
-const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
-const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-const len = u => Math.hypot(u[0], u[1], u[2]);
-const norm = u => { const l = len(u); return l < 1e-9 ? [0, 0, 0] : mul(u, 1 / l); };
-const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const fmt = (n, d = 2) => {
-  if (Math.abs(n) < 0.5 * Math.pow(10, -d)) n = 0;
-  return n.toFixed(d).replace('-', '−');
-};
-const tup = v => `(${fmt(v[0])}, ${fmt(v[1])}, ${fmt(v[2])})`;
-
-/* ---------- cámara (proyección ortogonal) ---------- */
-function basis() {
-  const cf = Math.cos(yaw), sf = Math.sin(yaw), ce = Math.cos(pitch), se = Math.sin(pitch);
-  RX = [cf, -sf, 0];
-  RU = [sf * se, cf * se, ce];
-  RD = [sf * ce, cf * ce, -se];
+/* ---------- marco del plano ---------- */
+function initFrame() {
+  const cr = cross(A, B);
+  fn = len(cr) > 1e-6 ? norm(cr) : [0, 0, 1];
+  let u = sub([1, 0, 0], mul(fn, fn[0]));                 // el eje x del mundo, proyectado sobre el plano
+  if (len(u) < 1e-3) u = sub([0, 1, 0], mul(fn, fn[1]));
+  fu = norm(u);
 }
-const proj = p => ({x: cx + S * dot(RX, p), y: cy - S * dot(RU, p), d: dot(RD, p)});
-
-/* ---------- utilidades de dibujo ---------- */
-function text(str, x, y, font, color, align = 'center') {
-  ctx.save();
-  ctx.font = font; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-  ctx.lineWidth = 5; ctx.strokeStyle = C.bg; ctx.strokeText(str, x, y);
-  ctx.fillStyle = color; ctx.fillText(str, x, y);
-  ctx.restore();
+/** Mantiene el marco continuo cuando A o B cambian en 3D (transporte paralelo de u). */
+function updateFrame() {
+  const a = len(A), b = len(B), cr = cross(A, B), cl = len(cr);
+  let nn;
+  if (cl > 0.01 * a * b) {
+    nn = mul(cr, 1 / cl);
+    if (dot(nn, fn) < 0) nn = mul(nn, -1);                // continuidad: no voltear el plano de golpe
+  } else {                                                // A ∥ B: el plano gira lo mínimo para seguir conteniéndolos
+    const ah = norm(A);
+    nn = sub(fn, mul(ah, dot(fn, ah)));
+    if (len(nn) < 1e-6) nn = cross(ah, Math.abs(ah[2]) < .9 ? Z : [1, 0, 0]);
+    nn = norm(nn);
+  }
+  const k = cross(fn, nn), kl = len(k);
+  if (kl > 1e-9) fu = rotAbout(fu, mul(k, 1 / kl), Math.atan2(kl, dot(fn, nn)));
+  fn = nn;
+  fu = norm(sub(fu, mul(fn, dot(fu, fn))));
 }
-function poly(pts3, close = true) {
-  ctx.beginPath();
-  pts3.forEach((p, i) => { const q = proj(p); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); });
-  if (close) ctx.closePath();
-}
-function line3(a, b) { const p = proj(a), q = proj(b); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); }
-function hull(pts) {
-  pts = pts.slice().sort((p, q) => p.x - q.x || p.y - q.y);
-  const cr = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lo = [], up = [];
-  for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
-  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
-  up.pop(); lo.pop();
-  return lo.concat(up);
-}
+const fw = () => cross(fn, fu);
+const to2 = v => ({x: dot(v, fu), y: dot(v, fw())});
+const to3 = p => add(mul(fu, p.x), mul(fw(), p.y));
 
 /* ---------- métricas ---------- */
 function metrics() {
   const a = len(A), b = len(B), d = dot(A, B), cr = cross(A, B), cl = len(cr);
-  const cos = clamp(d / (a * b), -1, 1);
-  const sin = clamp(cl / (a * b), 0, 1);
-  const th = Math.atan2(cl, d);                       // ángulo en [0, π], estable numéricamente
-  const ok = cl > 0.02;
-  return {a, b, d, cr, cl, cos, sin, th, deg: th * 180 / Math.PI, ok, nhat: ok ? mul(cr, 1 / cl) : null};
+  const sin = clamp(cl / (a * b), 0, 1), th = Math.atan2(cl, d), ok = cl > 0.02;
+  return {a, b, d, cr, cl, sin, th, deg: th * 180 / Math.PI, ok, nhat: ok ? mul(cr, 1 / cl) : null};
 }
 
-/* ---------- escena ---------- */
-function drawFloor() {
-  ctx.save();
-  ctx.lineWidth = 1;
-  ctx.fillStyle = 'rgba(238,234,226,.018)';
-  poly([[-EXT, -EXT, 0], [EXT, -EXT, 0], [EXT, EXT, 0], [-EXT, EXT, 0]]); ctx.fill();
-  ctx.strokeStyle = 'rgba(238,234,226,.055)';
-  for (let i = -EXT; i <= EXT; i++) {
-    line3([-EXT, i, 0], [EXT, i, 0]); ctx.stroke();
-    line3([i, -EXT, 0], [i, EXT, 0]); ctx.stroke();
+/* ---------- vista 3D ---------- */
+function draw3D(m) {
+  view.begin();
+  if (mode === 'scale' && m.ok) {                        // alejar la cámara lo justo para que A × B entre completo
+    const tu = Math.abs(dot(view.RX, m.cr)), tv = Math.abs(dot(view.RU, m.cr));
+    view.S = Math.max(view.S0 * .3, Math.min(view.S0, .40 * view.W / Math.max(tu, 1e-6), .40 * view.H / Math.max(tv, 1e-6)));
   }
-  ctx.restore();
-}
+  const c = view.ctx;
+  view.floor(); view.axes();
 
-function drawAxes() {
-  ctx.save();
-  ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(238,234,226,.30)';
-  line3([-EXT, 0, 0], [EXT, 0, 0]); ctx.stroke();
-  line3([0, -EXT, 0], [0, EXT, 0]); ctx.stroke();
-  line3([0, 0, -EXT], [0, 0, EXT]); ctx.stroke();
-  ctx.restore();
-  [['x', [EXT + .45, 0, 0]], ['y', [0, EXT + .45, 0]], ['z', [0, 0, EXT + .45]]].forEach(([s, p]) => {
-    const q = proj(p); text(s, q.x, q.y, SERIF_S, C.muted);
-  });
-}
-
-function drawDrops() {           // proyección de cada punta sobre el plano xy
-  [[A, C.a], [B, C.b]].forEach(([v, col]) => {
+  [[A, C.a], [B, C.b]].forEach(([v, col]) => {           // proyección de cada punta sobre el piso
     if (Math.abs(v[2]) < 0.05) return;
-    const f = [v[0], v[1], 0], q = proj(f);
-    ctx.save();
-    ctx.strokeStyle = col; ctx.globalAlpha = .42; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
-    line3(v, f); ctx.stroke();
-    ctx.setLineDash([]); ctx.fillStyle = col; ctx.globalAlpha = .55;
-    ctx.beginPath(); ctx.arc(q.x, q.y, 3, 0, 2 * Math.PI); ctx.fill();
-    ctx.restore();
+    const f = [v[0], v[1], 0], q = view.proj(f);
+    c.save(); c.strokeStyle = col; c.globalAlpha = .42; c.lineWidth = 1.2; c.setLineDash([3, 4]);
+    view.line3(v, f); c.stroke();
+    c.setLineDash([]); c.fillStyle = col; c.globalAlpha = .55;
+    c.beginPath(); c.arc(q.x, q.y, 3, 0, 2 * Math.PI); c.fill(); c.restore();
   });
-}
 
-function arrow3(v, color, ring) {
-  const L = len(v);
-  if (L < 1e-6) return;
-  const dir = mul(v, 1 / L), hl = Math.min(.34, L * .4), hr = hl * .38;
-  const baseC = mul(dir, L - hl);
-  const o = proj([0, 0, 0]), b = proj(baseC), t = proj(v);
+  const items = [], O = [0, 0, 0], AB = add(A, B);
+  const hot = k => (st.hover === k || (st.drag && st.drag.k === k)) ? 'hot' : 'idle';
 
-  ctx.save();
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.strokeStyle = color; ctx.lineWidth = 3.6;
-  ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-
-  const ref = Math.abs(dir[2]) < .9 ? [0, 0, 1] : [1, 0, 0];
-  const u = norm(cross(dir, ref)), w = cross(dir, u);
-  const rim = [];
-  for (let k = 0; k < 18; k++) {
-    const a = k / 18 * 2 * Math.PI;
-    const q = proj(add(baseC, add(mul(u, hr * Math.cos(a)), mul(w, hr * Math.sin(a)))));
-    rim.push({x: q.x, y: q.y});
-  }
-  const sil = hull(rim.concat([{x: t.x, y: t.y}]));
-  ctx.fillStyle = color; ctx.beginPath();
-  sil.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.fill();
-  if (dot(dir, RD) > 0) {                                   // se ve la base del cono
-    ctx.fillStyle = 'rgba(13,15,22,.32)'; ctx.beginPath();
-    rim.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.fill();
-  }
-  if (ring) {
-    ctx.lineWidth = 1.6; ctx.strokeStyle = color; ctx.globalAlpha = ring === 'hot' ? .95 : .5;
-    ctx.beginPath(); ctx.arc(t.x, t.y, 14, 0, 2 * Math.PI);
-    if (ring === 'hot') { ctx.save(); ctx.globalAlpha = .15; ctx.fillStyle = color; ctx.fill(); ctx.restore(); }
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function tipLabel(v, str, font, color, gap = 30) {
-  const o = proj([0, 0, 0]), t = proj(v), dx = t.x - o.x, dy = t.y - o.y, L = Math.hypot(dx, dy);
-  const ux = L < 1 ? 0 : dx / L, uy = L < 1 ? -1 : dy / L;
-  text(str, t.x + ux * gap, t.y + uy * gap, font, color);
-}
-
-function draw() {
-  basis();
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, W, H);
-  const m = metrics();
-  S = S0;
-  if (mode === 'scale' && m.ok) {            // alejar la cámara lo justo para que A × B entre completo
-    const tu = Math.abs(dot(RX, m.cr)), tv = Math.abs(dot(RU, m.cr));
-    S = Math.max(S0 * .3, Math.min(S0, .40 * W / Math.max(tu, 1e-6), .40 * H / Math.max(tv, 1e-6)));
-  }
-
-  drawFloor(); drawAxes(); drawDrops();
-
-  const items = [];
-  const O = [0, 0, 0], AB = add(A, B);
-  const hotA = hover === 'A' || (drag && drag.k === 'A') ? 'hot' : 'idle';
-  const hotB = hover === 'B' || (drag && drag.k === 'B') ? 'hot' : 'idle';
-
-  // paralelogramo
-  items.push({d: (proj(O).d + proj(A).d + proj(AB).d + proj(B).d) / 4, fn: () => {
-    ctx.save();
-    ctx.fillStyle = 'rgba(232,185,78,.20)'; poly([O, A, AB, B]); ctx.fill();
-    ctx.strokeStyle = 'rgba(232,185,78,.75)'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
-    poly([O, A, AB, B]); ctx.stroke();
-    ctx.setLineDash([4, 5]); ctx.lineWidth = 1.3; ctx.globalAlpha = .6;
-    ctx.strokeStyle = C.b; line3(A, AB); ctx.stroke();      // A trasladado a la punta de B, y viceversa
-    ctx.strokeStyle = C.a; line3(B, AB); ctx.stroke();
-    ctx.restore();
+  items.push({d: (view.proj(O).d + view.proj(A).d + view.proj(AB).d + view.proj(B).d) / 4, fn: () => {
+    c.save();
+    c.fillStyle = 'rgba(232,185,78,.20)'; view.poly([O, A, AB, B]); c.fill();
+    c.strokeStyle = 'rgba(232,185,78,.75)'; c.lineWidth = 1.5; c.lineJoin = 'round';
+    view.poly([O, A, AB, B]); c.stroke();
+    c.setLineDash([4, 5]); c.lineWidth = 1.3; c.globalAlpha = .6;
+    c.strokeStyle = C.b; view.line3(A, AB); c.stroke();
+    c.strokeStyle = C.a; view.line3(B, AB); c.stroke();
+    c.restore();
   }});
 
+  let arcInfo = null;
   if (m.ok) {
-    const ah = norm(A), bh = norm(B);
-    const e = norm(sub(bh, mul(ah, dot(bh, ah))));          // perpendicular a A dentro del plano, hacia B
-    const r = Math.min(.9, .38 * Math.min(m.a, m.b));
-    const arcPts = [], N = 28;
-    for (let i = 0; i <= N; i++) {
-      const t = m.th * i / N;
-      arcPts.push(add(mul(ah, r * Math.cos(t)), mul(e, r * Math.sin(t))));
-    }
-    items.push({d: proj(arcPts[N >> 1]).d, fn: () => {                  // sector y arco de θ
-      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.fillStyle = 'rgba(232,185,78,.30)'; poly([O].concat(arcPts)); ctx.fill();
-      ctx.strokeStyle = C.sol; ctx.lineWidth = 2.4; poly(arcPts, false); ctx.stroke();
-      ctx.restore();
+    const ah = norm(A), bh = norm(B), e = norm(sub(bh, mul(ah, dot(bh, ah))));
+    const r = Math.min(.9, .38 * Math.min(m.a, m.b)), arc = [], N = 28;
+    for (let i = 0; i <= N; i++) { const t = m.th * i / N; arc.push(add(mul(ah, r * Math.cos(t)), mul(e, r * Math.sin(t)))); }
+    arcInfo = {ah, e, r};
+    items.push({d: view.proj(arc[N >> 1]).d, fn: () => {
+      c.save(); c.lineCap = 'round'; c.lineJoin = 'round';
+      c.fillStyle = 'rgba(232,185,78,.30)'; view.poly([O].concat(arc)); c.fill();
+      c.strokeStyle = C.sol; c.lineWidth = 2.4; view.poly(arc, false); c.stroke(); c.restore();
     }});
-    // marcas de ángulo recto entre A × B y cada uno de los factores
-    [ah, bh].forEach(u => {
+    [ah, bh].forEach(u => {                              // ángulos rectos entre A × B y cada factor
       const s = .3, pts = [mul(u, s), add(mul(u, s), mul(m.nhat, s)), mul(m.nhat, s)];
-      items.push({d: proj(pts[1]).d, fn: () => {
-        ctx.save(); ctx.strokeStyle = 'rgba(238,234,226,.6)'; ctx.lineWidth = 1.3; ctx.lineJoin = 'round';
-        poly(pts, false); ctx.stroke(); ctx.restore();
+      items.push({d: view.proj(pts[1]).d, fn: () => {
+        c.save(); c.strokeStyle = 'rgba(238,234,226,.6)'; c.lineWidth = 1.3; c.lineJoin = 'round';
+        view.poly(pts, false); c.stroke(); c.restore();
       }});
     });
   }
 
-  items.push({d: proj(mul(A, .5)).d, fn: () => arrow3(A, C.a, hotA)});
-  items.push({d: proj(mul(B, .5)).d, fn: () => arrow3(B, C.b, hotB)});
-
+  items.push({d: view.proj(mul(A, .5)).d, fn: () => view.arrow(A, C.a, hot('A'))});
+  items.push({d: view.proj(mul(B, .5)).d, fn: () => view.arrow(B, C.b, hot('B'))});
   let nvec = null;
   if (m.ok) {
     nvec = mode === 'unit' ? mul(m.nhat, NUNIT) : m.cr;
-    items.push({d: proj(mul(nvec, .5)).d, fn: () => arrow3(nvec, C.n, null)});
+    items.push({d: view.proj(mul(nvec, .5)).d, fn: () => view.arrow(nvec, C.n, null)});
   }
-
-  items.sort((p, q) => q.d - p.d);                          // primero lo más lejano
+  items.sort((p, q) => q.d - p.d);
   items.forEach(it => it.fn());
 
-  // origen y etiquetas (siempre por encima)
-  const o = proj(O);
-  ctx.fillStyle = C.text; ctx.beginPath(); ctx.arc(o.x, o.y, 3.5, 0, 2 * Math.PI); ctx.fill();
-  tipLabel(A, 'A', SERIF, C.a);
-  tipLabel(B, 'B', SERIF, C.b);
+  const o = view.proj(O);
+  c.fillStyle = C.text; c.beginPath(); c.arc(o.x, o.y, 3.5, 0, 2 * Math.PI); c.fill();
+  view.tipLabel(A, 'A', FONT.serif, C.a);
+  view.tipLabel(B, 'B', FONT.serif, C.b);
   if (m.ok) {
-    tipLabel(nvec, 'A × B', SERIF, C.n, 34);
-    const ah = norm(A), bh = norm(B), e = norm(sub(bh, mul(ah, dot(bh, ah))));
-    const r = Math.min(.9, .38 * Math.min(m.a, m.b)) + .42, half = m.th / 2;
-    const q = proj(add(mul(ah, r * Math.cos(half)), mul(e, r * Math.sin(half))));
-    text('θ', q.x, q.y, SERIF, C.sol);
-    const c = proj(mul(AB, .5));
-    text(`área = ${fmt(m.cl)}`, c.x, c.y, SANS_M, C.sol);
+    view.tipLabel(nvec, 'A × B', FONT.serif, C.n, 34);
+    const r = arcInfo.r + .42, h = m.th / 2;
+    const q = view.proj(add(mul(arcInfo.ah, r * Math.cos(h)), mul(arcInfo.e, r * Math.sin(h))));
+    text(c, 'θ', q.x, q.y, FONT.serif, C.sol);
+    const ctr = view.proj(mul(AB, .5));
+    text(c, `área = ${fmt(m.cl)}`, ctr.x, ctr.y, FONT.sansM, C.sol);
   }
-  updatePanel(m);
+}
+
+/* ---------- vista del plano de A y B ---------- */
+function resizePlane() {
+  const r = pcv.getBoundingClientRect();
+  dpr2 = window.devicePixelRatio || 1; W2 = r.width; H2 = r.height;
+  pcv.width = Math.round(W2 * dpr2); pcv.height = Math.round(H2 * dpr2);
+  S2 = Math.min(W2, H2) / (2 * 5.0);
+  render();
+}
+
+function drawPlane(m) {
+  if (W2 < 10 || H2 < 10) return;                        // oculto en pantallas estrechas
+  const c = pctx, cx = W2 / 2, cy = H2 / 2;
+  const a2 = to2(A), b2 = to2(B);
+  const X = p => cx + p.x * S2, Y = p => cy - p.y * S2;
+  c.setTransform(dpr2, 0, 0, dpr2, 0, 0); c.clearRect(0, 0, W2, H2);
+
+  // rejilla del plano
+  c.lineWidth = 1; c.setLineDash([]);
+  const nx = Math.ceil(cx / S2), ny = Math.ceil(cy / S2);
+  for (let i = -nx; i <= nx; i++) { const x = Math.round(cx + i * S2) + .5; c.strokeStyle = i ? 'rgba(238,234,226,.05)' : 'rgba(238,234,226,.20)'; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H2); c.stroke(); }
+  for (let j = -ny; j <= ny; j++) { const y = Math.round(cy + j * S2) + .5; c.strokeStyle = j ? 'rgba(238,234,226,.05)' : 'rgba(238,234,226,.20)'; c.beginPath(); c.moveTo(0, y); c.lineTo(W2, y); c.stroke(); }
+
+  // recta horizontal del plano (su intersección con el piso z = 0)
+  const hz = cross(fn, Z), tilt = Math.acos(clamp(Math.abs(fn[2]), 0, 1)) * 180 / Math.PI;
+  if (len(hz) > 0.04) {
+    const hp = to2(norm(hz)), T = W2 + H2;
+    c.save(); c.setLineDash([2, 6]); c.lineWidth = 1.25; c.strokeStyle = 'rgba(140,146,164,.55)';
+    c.beginPath(); c.moveTo(cx - hp.x * T, cy + hp.y * T); c.lineTo(cx + hp.x * T, cy - hp.y * T); c.stroke(); c.restore();
+    const lx = cx + hp.x * W2 * .36, ly = cy - hp.y * W2 * .36;
+    text(c, 'horizontal', lx - hp.y * 12, ly - hp.x * 12, FONT.sans, 'rgba(140,146,164,.8)');
+  }
+
+  // paralelogramo
+  const ab = {x: a2.x + b2.x, y: a2.y + b2.y};
+  c.save();
+  c.fillStyle = 'rgba(232,185,78,.20)'; c.strokeStyle = 'rgba(232,185,78,.75)'; c.lineWidth = 1.5; c.lineJoin = 'round';
+  c.beginPath(); c.moveTo(cx, cy); c.lineTo(X(a2), Y(a2)); c.lineTo(X(ab), Y(ab)); c.lineTo(X(b2), Y(b2)); c.closePath(); c.fill(); c.stroke();
+  c.setLineDash([4, 5]); c.globalAlpha = .6; c.lineWidth = 1.3;
+  c.strokeStyle = C.b; c.beginPath(); c.moveTo(X(a2), Y(a2)); c.lineTo(X(ab), Y(ab)); c.stroke();
+  c.strokeStyle = C.a; c.beginPath(); c.moveTo(X(b2), Y(b2)); c.lineTo(X(ab), Y(ab)); c.stroke();
+  c.restore();
+
+  // ángulo θ
+  const aa = Math.atan2(a2.y, a2.x), ba = Math.atan2(b2.y, b2.x);
+  const r = clamp(.4 * Math.min(m.a, m.b) * S2, 20, 44);
+  const arc = arc2(c, cx, cy, aa, ba, r, {fill: 'rgba(232,185,78,.30)', stroke: C.sol, right: true});
+  if (Math.abs(arc.d) > 1e-3) text(c, `θ = ${fmt(m.deg, 1)}°`, cx + Math.cos(arc.mid) * (r + 30), cy - Math.sin(arc.mid) * (r + 30), FONT.serifS, C.sol);
+
+  // vectores
+  [[a2, C.a, 'A'], [b2, C.b, 'B']].forEach(([p, col, k]) => {
+    const x = X(p), y = Y(p), L = Math.hypot(x - cx, y - cy);
+    arrow2(c, cx, cy, x, y, col, 3.6, 15);
+    ring2(c, x, y, col, pst.hover === k || (pst.drag && pst.drag.k === k), 13);
+    if (L > 1) text(c, k, x + (x - cx) / L * 27, y + (y - cy) / L * 27, FONT.serif, col);
+  });
+  c.fillStyle = C.text; c.beginPath(); c.arc(cx, cy, 3.5, 0, 2 * Math.PI); c.fill();
+
+  const det = a2.x * b2.y - a2.y * b2.x;
+
+  // sentido de A × B respecto de esta vista: hacia ti (⊙) o alejándose (⊗)
+  const sx = W2 - 20, sy = 22;
+  c.save(); c.strokeStyle = C.n; c.fillStyle = C.n; c.lineWidth = 1.6;
+  if (Math.abs(det) > 0.02) {
+    c.beginPath(); c.arc(sx, sy, 8, 0, 2 * Math.PI); c.stroke();
+    if (det > 0) { c.beginPath(); c.arc(sx, sy, 2.6, 0, 2 * Math.PI); c.fill(); }
+    else { c.beginPath(); c.moveTo(sx - 4.5, sy - 4.5); c.lineTo(sx + 4.5, sy + 4.5); c.moveTo(sx + 4.5, sy - 4.5); c.lineTo(sx - 4.5, sy + 4.5); c.stroke(); }
+  }
+  c.restore();
+  text(c, Math.abs(det) > 0.02 ? (det > 0 ? 'A × B hacia ti' : 'A × B hacia dentro') : 'A × B = 0', sx - 16, sy, FONT.sans, C.n, 'right');
+  text(c, `Plano de A y B, inclinado ${fmt(tilt, 0)}°`, 14, 22, FONT.sans, C.muted, 'left');
 }
 
 /* ---------- panel ---------- */
 function noteFor(m) {
   if (!m.ok) return 'Paralelos: sin θ = 0, el paralelogramo se aplasta en un segmento y A × B = 0. Sin área no hay una dirección perpendicular única.';
   if (Math.abs(m.deg - 90) < 1) return 'Perpendiculares: sin θ = 1, así que el área es máxima, |A||B|. A × B es perpendicular al plano de A y B.';
-  return 'A × B es perpendicular a A y a B, con el sentido de la regla de la mano derecha (de A hacia B). Su longitud es el área del paralelogramo.';
+  return 'A × B es perpendicular a A y a B (regla de la mano derecha, de A hacia B). Su longitud es el área del paralelogramo.';
 }
-
 function updatePanel(m) {
   $('aMag').textContent = fmt(m.a);  $('aXYZ').textContent = tup(A);
   $('bMag').textContent = fmt(m.b);  $('bXYZ').textContent = tup(B);
   $('l2').innerHTML = `= <span class="a">${fmt(m.a)}</span> × <span class="b">${fmt(m.b)}</span> × <span class="t">sin(${fmt(m.deg, 1)}°)</span>`;
   $('l3').textContent = '= ' + fmt(m.cl);
-  $('chk').textContent = `Es el área del paralelogramo que forman A y B.`;
   $('sinVal').textContent = fmt(m.sin);
   $('sinFill').style.width = m.sin * 100 + '%';
   $('sinMark').style.left = m.sin * 100 + '%';
-  $('cXYZ').textContent = `${tup(m.cr)},  longitud ${fmt(m.cl)}`;
+  $('cXYZ').textContent = `${tup(m.cr)}, longitud ${fmt(m.cl)}`;
   $('note').textContent = noteFor(m);
+  fit();
 }
 
-/* ---------- interacción ---------- */
-const pos = e => { const r = cv.getBoundingClientRect(); return {px: e.clientX - r.left, py: e.clientY - r.top}; };
+function render() { const m = metrics(); draw3D(m); drawPlane(m); updatePanel(m); }
 
-function hit(px, py) {
-  let best = null, bd = 24;
-  [['A', A], ['B', B]].forEach(([k, v]) => {
-    const q = proj(v), d = Math.hypot(px - q.x, py - q.y);
-    if (d <= bd) { bd = d; best = k; }
-  });
-  return best;
-}
-
+/* ---------- edición de vectores ---------- */
 function setVec(k, v) {
   const old = k === 'A' ? A : B;
   let L = len(v);
   if (L < 1e-6) { v = old.slice(); L = len(v); }
   const s = L > LMAX ? LMAX / L : (L < LMIN ? LMIN / L : 1);
-  const q = mul(v, s);
-  if (k === 'A') A = q; else B = q;
+  if (k === 'A') A = mul(v, s); else B = mul(v, s);
+  updateFrame();
 }
 
-cv.addEventListener('pointerdown', e => {
-  const {px, py} = pos(e), k = hit(px, py);
+const st = bind3D(view, {
+  tips: () => [{k: 'A', v: A}, {k: 'B', v: B}],
+  set: setVec,
+  redraw: render,
+  vertical: e => zLock || e.shiftKey,
+  onStart: () => cancelAnimationFrame(anim),
+  onDblBg: () => animateTo(A, B, VIEW0),
+});
+
+/* arrastre dentro del plano: solo cambia el giro (acimut) y la longitud en el plano; el plano no se inclina */
+const pos2 = e => { const r = pcv.getBoundingClientRect(); return {px: e.clientX - r.left, py: e.clientY - r.top}; };
+const tip2 = k => { const p = to2(k === 'A' ? A : B); return {x: W2 / 2 + p.x * S2, y: H2 / 2 - p.y * S2}; };
+function hit2(px, py, touch) {
+  let best = null, bd = touch ? 36 : 24;
+  ['A', 'B'].forEach(k => { const q = tip2(k), d = Math.hypot(px - q.x, py - q.y); if (d <= bd) { bd = d; best = k; } });
+  return best;
+}
+pcv.addEventListener('pointerdown', e => {
+  const {px, py} = pos2(e), k = hit2(px, py, e.pointerType === 'touch');
+  if (!k) return;
   cancelAnimationFrame(anim);
-  cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing';
-  if (k) { const q = proj(k === 'A' ? A : B); drag = {k, ox: px - q.x, oy: py - q.y, ly: py}; }
-  else orbit = {lx: px, ly: py};
-  draw();
+  const q = tip2(k); pst.drag = {k, ox: px - q.x, oy: py - q.y};
+  pcv.setPointerCapture(e.pointerId); pcv.style.cursor = 'grabbing'; render();
 });
-
-cv.addEventListener('pointermove', e => {
-  const {px, py} = pos(e);
-  if (drag) {
-    basis();
-    const v = drag.k === 'A' ? A : B;
-    if (e.shiftKey) {                                        // desplazamiento vertical (eje z)
-      const dz = (-(py - drag.ly) / S) / Math.max(.3, Math.cos(pitch));
-      setVec(drag.k, [v[0], v[1], v[2] + dz]);
-      const q = proj(drag.k === 'A' ? A : B); drag.ox = px - q.x; drag.oy = py - q.y;
-    } else {                                                 // desplazamiento en el plano paralelo a la pantalla
-      const q = proj(v);
-      const ds = (px - drag.ox - q.x) / S, du = -(py - drag.oy - q.y) / S;
-      setVec(drag.k, add(v, add(mul(RX, ds), mul(RU, du))));
-    }
-    drag.ly = py; draw(); return;
+pcv.addEventListener('pointermove', e => {
+  const {px, py} = pos2(e);
+  if (pst.drag) {
+    const d = pst.drag;
+    let p = {x: (px - d.ox - W2 / 2) / S2, y: (H2 / 2 - (py - d.oy)) / S2};
+    const L = Math.hypot(p.x, p.y), s = L > LMAX ? LMAX / L : (L < LMIN && L > 0 ? LMIN / L : 1);
+    if (L === 0) p = {x: LMIN, y: 0};
+    const v = to3({x: p.x * s, y: p.y * s});
+    if (d.k === 'A') A = v; else B = v;
+    render(); return;
   }
-  if (orbit) {
-    yaw += (px - orbit.lx) * 0.008;
-    pitch = clamp(pitch + (py - orbit.ly) * 0.006, -1.5, 1.5);
-    orbit.lx = px; orbit.ly = py; draw(); return;
-  }
-  const k = hit(px, py);
-  if (k !== hover) { hover = k; cv.style.cursor = k ? 'grab' : 'default'; draw(); }
+  if (e.pointerType === 'touch') return;
+  const k = hit2(px, py, false);
+  if (k !== pst.hover) { pst.hover = k; pcv.style.cursor = k ? 'grab' : 'default'; render(); }
 });
-
-const endDrag = () => { drag = null; orbit = null; cv.style.cursor = hover ? 'grab' : 'default'; draw(); };
-cv.addEventListener('pointerup', endDrag);
-cv.addEventListener('pointercancel', endDrag);
-cv.addEventListener('pointerleave', () => { if (!drag && !orbit && hover) { hover = null; draw(); } });
-cv.addEventListener('dblclick', e => { const {px, py} = pos(e); if (!hit(px, py)) animateTo(A, B, VIEW0); });
+const endPlane = () => { pst.drag = null; pcv.style.cursor = pst.hover ? 'grab' : 'default'; render(); };
+pcv.addEventListener('pointerup', endPlane);
+pcv.addEventListener('pointercancel', endPlane);
+pcv.addEventListener('pointerleave', () => { if (!pst.drag && pst.hover) { pst.hover = null; render(); } });
 
 /* ---------- animaciones y atajos ---------- */
-function slerp(u, v, t) {                                    // u, v unitarios
-  const c = clamp(dot(u, v), -1, 1), th = Math.acos(c);
-  if (th < 1e-4) return v.slice();
-  if (Math.PI - th < 1e-3) {                                 // opuestos: girar por un perpendicular
-    const p = norm(cross(u, Math.abs(u[2]) < .9 ? [0, 0, 1] : [1, 0, 0]));
-    return add(mul(u, Math.cos(Math.PI * t)), mul(p, Math.sin(Math.PI * t)));
-  }
-  const s = Math.sin(th);
-  return add(mul(u, Math.sin((1 - t) * th) / s), mul(v, Math.sin(t * th) / s));
-}
-
-function animateTo(nA, nB, view) {
+function animateTo(nA, nB, viewTarget, resetFrame) {
   cancelAnimationFrame(anim);
-  let ty = yaw, tp = pitch;
-  if (view) { ty = yaw + Math.atan2(Math.sin(view.yaw - yaw), Math.cos(view.yaw - yaw)); tp = view.pitch; }
-  if (reduce) { A = nA.slice(); B = nB.slice(); yaw = ty; pitch = tp; draw(); return; }
+  let ty = view.yaw, tp = view.pitch;
+  if (viewTarget) { ty = view.yaw + Math.atan2(Math.sin(viewTarget.yaw - view.yaw), Math.cos(viewTarget.yaw - view.yaw)); tp = viewTarget.pitch; }
+  const finish = () => { if (resetFrame) initFrame(); render(); };
+  if (reduce) { A = nA.slice(); B = nB.slice(); view.yaw = ty; view.pitch = tp; updateFrame(); finish(); return; }
   const fa = {d: norm(A), l: len(A)}, fb = {d: norm(B), l: len(B)};
   const ta = {d: norm(nA), l: len(nA)}, tb = {d: norm(nB), l: len(nB)};
-  const y0 = yaw, p0 = pitch, t0 = performance.now(), D = 450;
+  const y0 = view.yaw, p0 = view.pitch, t0 = performance.now(), D = 450;
   const step = now => {
     const t = Math.min(1, (now - t0) / D), e = 1 - Math.pow(1 - t, 3);
     A = mul(slerp(fa.d, ta.d, e), fa.l + (ta.l - fa.l) * e);
     B = mul(slerp(fb.d, tb.d, e), fb.l + (tb.l - fb.l) * e);
-    yaw = y0 + (ty - y0) * e; pitch = p0 + (tp - p0) * e;
-    draw();
-    if (t < 1) anim = requestAnimationFrame(step);
+    view.yaw = y0 + (ty - y0) * e; view.pitch = p0 + (tp - p0) * e;
+    updateFrame();
+    if (t < 1) { render(); anim = requestAnimationFrame(step); } else finish();
   };
   anim = requestAnimationFrame(step);
 }
 
-$('pReset').onclick = () => { const v = V0(); animateTo(v.A, v.B, VIEW0); };
+$('pReset').onclick = () => { const v = V0(); animateTo(v.A, v.B, VIEW0, true); };
 $('pPar').onclick = () => animateTo(A.slice(), mul(norm(A), len(B)));
+$('pOpp').onclick = () => animateTo(A.slice(), mul(norm(A), -len(B)));
 $('pPerp').onclick = () => {
   const ah = norm(A);
   let p = sub(B, mul(ah, dot(B, ah)));
-  if (len(p) < 1e-3) p = cross(ah, Math.abs(ah[2]) < .9 ? [0, 0, 1] : [1, 0, 0]);
+  if (len(p) < 1e-3) p = cross(ah, Math.abs(ah[2]) < .9 ? Z : [1, 0, 0]);
   animateTo(A.slice(), mul(norm(p), len(B)));
 };
+$('zMode').onclick = () => { zLock = !zLock; $('zMode').setAttribute('aria-pressed', String(zLock)); };
 
 function setMode(k) {
   mode = k;
   $('mUnit').setAttribute('aria-pressed', String(k === 'unit'));
   $('mScale').setAttribute('aria-pressed', String(k === 'scale'));
-  draw();
+  render();
 }
 $('mUnit').onclick = () => setMode('unit');
 $('mScale').onclick = () => setMode('scale');
 
 /* ---------- arranque ---------- */
-function resize() {
-  const r = cv.getBoundingClientRect();
-  dpr = window.devicePixelRatio || 1;
-  W = r.width; H = r.height;
-  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-  S0 = S = Math.min(H / 9.2, W / 10.8); cx = W / 2; cy = H / 2;
-  draw();
-}
-new ResizeObserver(resize).observe(cv);
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
-resize();
+initFrame();
+new ResizeObserver(() => { view.resize(); render(); }).observe($('cv'));
+new ResizeObserver(resizePlane).observe(pcv);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+view.resize(); resizePlane();
 })();
 </script>
 </body>
